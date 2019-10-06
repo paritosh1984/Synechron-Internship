@@ -1,0 +1,306 @@
+---
+title: "FX_MODEL"
+author: "Paritosh Kalla"
+date: "7/19/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+```{r}
+rm(list = ls())
+```
+
+Importing the Dataset
+
+```{r}
+df = read.csv('Sample_Data.csv')
+keeps = c('Product','Status','CCY.Pair','CCY.Amount') # Can also be done using select() from dplyr package
+df = df[keeps]
+```
+
+Filtering the dataset for "FXFWD" and "INOPICS"
+
+```{r}
+library(tidyverse)
+fxfwd = df %>% filter(Product == 'FXFWD') %>% filter(Status == 'INOPICS')
+```
+
+```{r}
+fxfwd = fxfwd %>% group_by(CCY.Pair) %>% summarise(CCY.Amount = sum(CCY.Amount))
+```
+
+Removing the column names 
+
+```{r}
+colnames(fxfwd) = NULL
+```
+
+Transposing the columns
+
+```{r}
+fxfwd = data.frame(t(fxfwd))
+colnames(fxfwd) <- as.character(unlist(fxfwd[1,]))
+fxfwd = fxfwd[-c(1),]
+```
+
+Creating a empty dataframe
+
+```{r}
+fxfwd_sim = data.frame(matrix("", ncol = 10, nrow = 499))
+colnames(fxfwd_sim) = names(fxfwd)
+```
+
+Generating simulated data for each currency pair
+
+Data Simulation for AUD/USD with white noise
+```{r}
+fxfwd_sim$`AUD/USD` = c(arima.sim(model = list(order = c(0,0,0)), n = 499) + 13825.68)
+plot(fxfwd_sim$`AUD/USD`, type = 'l')
+```
+
+Data Simulation for EUR/CAD with MA component
+```{r}
+fxfwd_sim$`EUR/CAD` = c(arima.sim(model = list(ma = 0.2488, order = c(0,0,1)), n = 499) + 58000)
+plot(fxfwd_sim$`EUR/CAD`, type = 'l')
+```
+
+Data Simulation for EUR/GBP with AR(2) component
+```{r}
+fxfwd_sim$`EUR/GBP` = c(arima.sim(model = list(ar = c(0.8897, -0.4858), order = c(2,0,0)), n = 499) + 109924.22)
+plot(fxfwd_sim$`EUR/GBP`, type = 'l')
+```
+
+Data Simulation for EUR/USD with MA(2) component
+```{r}
+fxfwd_sim$`EUR/USD` = c(arima.sim(model = list(ma = c(-0.2279, 0.2488), order = c(0,0,2)), n = 499) + 2750328)
+plot(fxfwd_sim$`EUR/USD`, type = 'l')
+```
+
+Data Simulation for GBP/CAD with both AR and MA component
+```{r}
+fxfwd_sim$`GBP/CAD` = c(arima.sim(model = list(ar = 0.8, ma = 0.2488, order = c(1,0,1)), n = 499) + 6000)
+plot(fxfwd_sim$`GBP/CAD`, type = 'l')
+```
+
+Data Simulation for GBP/USD with Non Linear Series
+```{r}
+set.seed(12121212)
+  n=499 
+  u<-rnorm(n) 
+  x<-rep(0,n) 
+  for(i in 2:n){ 
+  x[i] <- x[i-1] + u[i]
+  } 
+fxfwd_sim$`GBP/USD` = x + 296105.85
+plot(fxfwd_sim$`GBP/USD`, type = 'l')
+plot(diff(fxfwd_sim$`GBP/USD`), type = 'l')
+```
+
+Data Simulation for USD/CAD with Heterogenous Variance (SARIMA)
+```{r}
+library(smooth)
+ourSimulation = sim.ssarima(orders=list(ar=c(5,10),i=c(0,2),ma=c(0,5)), lags=c(1,7), obs=499, iprob=0.2)
+fxfwd_sim$`USD/CAD` = ourSimulation$data + 2695816.66
+plot(fxfwd_sim$`USD/CAD`, type = 'l')
+```
+
+Data Simulation for USD/JPY with Simple Exponential Smoothing 
+```{r}
+ourSimulation <- sim.es("ANN", frequency=12, obs=499)
+fxfwd_sim$`USD/JPY` = ourSimulation$data + 6000000
+plot(fxfwd_sim$`USD/JPY`, type = 'l')
+```
+
+Data Simulation for USD/MXN with Complex Exponenetial Smoothing
+```{r}
+ourSimulation <- sim.ces(frequency=10, obs=499, nsim=1)
+fxfwd_sim$`USD/MXN` = ourSimulation$data + 3813
+plot(fxfwd_sim$`USD/MXN`, type = 'l')
+```
+
+Data Simulation for USD/NOK with SARIMA
+```{r}
+library(smooth)
+ourSimulation <-sim.ssarima(orders=list(ar=c(0,5),i=c(0,2),ma=c(0,1)), lags=c(1,12), constant=TRUE, obs=499)
+fxfwd_sim$`USD/NOK` = ourSimulation$data + 1707579.20
+plot(fxfwd_sim$`USD/NOK`, type = 'l')
+```
+
+
+Combining the simulated dataframe with actual dataframe
+```{r}
+#install.packages("plyr")
+library(plyr)
+fxfwd = rbind.fill(fxfwd,fxfwd_sim)
+```
+
+Adding the item column 
+```{r}
+#rownames(fxfwd) = seq(as.Date("2012/1/1"), by = "day", length.out = 500)
+fxfwd$item = seq(1:nrow(fxfwd))
+```
+
+Checking the structure of the dataframe
+```{r}
+str(fxfwd)
+```
+
+Changing the structure to numeric
+```{r}
+fxfwd[] <- lapply(fxfwd, function(x) as.numeric(as.character(x)))
+```
+
+Plots for Checking Stationarity, p and q values
+
+```{r}
+library(car)
+attach(fxfwd)
+par(mfrow = c(2,2), mai = c(0.7, 0.3, 0.3, 0.3))
+loop.vector = 1:10
+for (i in names(fxfwd[1:10])){
+plot(item, fxfwd[,i], pch = 19, type = 'l',main = colnames(fxfwd[i]), ylab = "Amount", xlab = "Frequency")
+  hist(fxfwd[,i], main = colnames(fxfwd[i]), xlab = "Amount")
+  acf(fxfwd[,i])
+  pacf(fxfwd[,i])
+}
+```
+
+PP Test for Checking Stationarity
+
+```{r}
+for(i in names(fxfwd[1:10])){
+  print(colnames(fxfwd[i]))
+print(PP.test(fxfwd[,i]))
+}
+```
+
+```{r}
+library(urca)
+jotest=ca.jo(fxfwd, type="trace", K=2, ecdet="none", spec="longrun")
+summary(jotest)
+```
+
+Splitting into Training Set and Test Set
+
+```{r}
+#install.packages("caTools")
+library(caTools)
+split = sample.split(fxfwd, SplitRatio = 2/3)
+train = subset(fxfwd, split == TRUE)
+test = subset(fxfwd, split == FALSE)
+```
+
+ARIMA Model for each Currency Pair
+
+ARIMA for AUD/USD with p = 2, q = 2, d = 0
+```{r}
+maudusd = arima(train$`AUD/USD`, order = c(2,0,2))
+faudusd = predict(maudusd, n.ahead = length(test$`AUD/USD`))
+test$`AUD/USD` - faudusd$pred
+n <- length(test$`AUD/USD` - faudusd$pred)
+RMSE1 <- sqrt(sum((test$`AUD/USD` - faudusd$pred)^2)/n)
+RMSE1
+ts.plot(test$`AUD/USD`, faudusd$pred, lty = c(1,3))
+```
+
+
+ARIMA for EUR/CAD with p = 5, q = 2, d = 0
+```{r}
+meurcad = arima(train$`EUR/CAD`, order = c(5,0,2))
+feurcad = predict(meurcad, n.ahead = length(test$`EUR/CAD`))
+test$`EUR/CAD` - feurcad$pred
+n <- length(test$`EUR/CAD` - feurcad$pred)
+RMSE2 <- sqrt(sum((test$`EUR/CAD` - feurcad$pred)^2)/n)
+RMSE2 
+ts.plot(test$`EUR/CAD`, feurcad$pred, lty = c(1,3))
+```
+
+ARIMA for EUR/GBP with p = 4, q = 2, d = 0
+```{r}
+meurgbp = arima(train$`EUR/GBP`, order = c(4,0,2))
+feurgbp = predict(meurgbp, n.ahead = length(test$`EUR/GBP`))
+test$`EUR/GBP` - feurgbp$pred
+n <- length(test$`EUR/GBP` - feurgbp$pred)
+RMSE3 <- sqrt(sum((test$`EUR/GBP` - feurgbp$pred)^2)/n)
+RMSE3 
+ts.plot(test$`EUR/GBP`, feurgbp$pred, lty = c(1,3))
+```
+
+ARIMA for EUR/USD with p = 2, q = 2, d = 0
+```{r}
+meurusd = arima(train$`EUR/USD`, order = c(2,0,2))
+feurusd = predict(meurusd, n.ahead = length(test$`EUR/USD`))
+test$`EUR/USD` - feurusd$pred
+n <- length(test$`EUR/USD` - feurusd$pred)
+RMSE4 <- sqrt(sum((test$`EUR/USD` - feurusd$pred)^2)/n)
+RMSE4 
+ts.plot(test$`EUR/USD`, feurusd$pred, lty = c(1,3))
+```
+
+ARIMA for GBP/CAD with p = 0, q = 2, d = 0
+```{r}
+mgbpcad = arima(train$`GBP/CAD`, order = c(0,0,2))
+fgbpcad = predict(mgbpcad, n.ahead = length(test$`GBP/CAD`))
+test$`GBP/CAD` - fgbpcad$pred
+n <- length(test$`GBP/CAD` - fgbpcad$pred)
+RMSE5 <- sqrt(sum((test$`GBP/CAD` - fgbpcad$pred)^2)/n)
+RMSE5 
+ts.plot(test$`GBP/CAD`, fgbpcad$pred, lty = c(1,3))
+```
+
+ARIMA for GBP/USD with p = 0, q = 3, d = 1
+```{r}
+mgbpusd = arima(train$`GBP/USD`, order = c(0,1,3))
+fgbpusd = predict(mgbpusd, n.ahead = length(test$`GBP/USD`))
+test$`GBP/USD` - fgbpusd$pred
+n <- length(test$`GBP/USD` - fgbpusd$pred)
+RMSE6 <- sqrt(sum((test$`GBP/USD` - fgbpusd$pred)^2)/n)
+RMSE6
+ts.plot(test$`GBP/USD`, fgbpusd$pred, lty = c(1,3))
+```
+
+ARIMA for USD/CAD with p = 2, q = 2, d = 0
+```{r}
+musdcad = arima(train$`USD/CAD`, order = c(2,0,2))
+fusdcad = predict(musdcad, n.ahead = length(test$`USD/CAD`))
+test$`USD/CAD` - fusdcad$pred
+n <- length(test$`USD/CAD` - fusdcad$pred)
+RMSE7 <- sqrt(sum((test$`USD/CAD` - fusdcad$pred)^2)/n)
+RMSE7 
+ts.plot(test$`USD/CAD`, fusdcad$pred, lty = c(1,3))
+```
+
+ARIMA for USD/JPY with p = 0, q = 14, d = 0
+```{r}
+musdjpy = arima(train$`USD/JPY`, order = c(0,0,14))
+fusdjpy = predict(musdjpy, n.ahead = length(test$`USD/JPY`))
+test$`USD/JPY` - fusdjpy$pred
+n <- length(test$`USD/JPY` - fusdjpy$pred)
+RMSE8 <- sqrt(sum((test$`USD/JPY` - fusdjpy$pred)^2)/n)
+RMSE8 
+ts.plot(test$`USD/JPY`, fusdjpy$pred, lty = c(1,3))
+```
+
+ARIMA for USD/MXN with p = 0, q = 6, d = 0
+```{r}
+musdmxn = arima(train$`USD/MXN`, order = c(0,0,6))
+fusdmxn = predict(musdmxn, n.ahead = length(test$`USD/MXN`))
+test$`USD/MXN` - fusdmxn$pred
+n <- length(test$`USD/MXN` - fusdmxn$pred)
+RMSE9 <- sqrt(sum((test$`USD/MXN` - fusdmxn$pred)^2)/n)
+RMSE9 
+ts.plot(test$`USD/MXN`, fusdmxn$pred, lty = c(1,3))
+```
+
+ARIMA for USD/NOK with p = 0, q = 8, d = 0
+```{r}
+musdnok = arima(train$`USD/NOK`, order = c(0,0,8))
+fusdnok = predict(musdnok, n.ahead = length(test$`USD/NOK`))
+test$`USD/NOK` - fusdnok$pred
+n <- length(test$`USD/NOK` - fusdnok$pred)
+RMSE10 <- sqrt(sum((test$`USD/NOK` - fusdnok$pred)^2)/n)
+RMSE10 
+ts.plot(test$`USD/NOK`, fusdnok$pred, lty = c(1,3))
+```
+

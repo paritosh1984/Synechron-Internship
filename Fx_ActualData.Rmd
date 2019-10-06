@@ -1,0 +1,74 @@
+---
+title: "FX_Model_ActualData"
+author: "Paritosh Kalla"
+date: "7/23/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+#tinytex::install_tinytex()
+```
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+d = read.csv('/Users/paritoshkalla/desktop/Actual_Data.csv')
+```
+
+```{r}
+attach(d)
+d$Date = as.factor(d$Date)
+d$CPTY = as.factor(d$CPTY)
+```
+
+```{r}
+str(d)
+```
+
+```{r}
+library(tidyverse)
+d %>% group_by(CPTY) %>% summarise(no_rows = length(CPTY))
+```
+
+```{r}
+d %>% group_by(Date) %>% summarise(no_rows = length(Date))
+```
+
+
+```{r}
+d = subset(subset(d, Date == '11'), CPTY == '3324')
+```
+
+```{r}
+fxspot = subset(d, Product == 'FXSPOT')
+fxfwd = subset(d, Product == 'FXFWD')
+fxswap = subset(d, Product == 'FXSWAP')
+fxndf = subset(d, Product == 'FXNDF')
+```
+
+
+```{r}
+fxspot = fxspot %>% group_by(CurrencyPair) %>% summarise(Amount = sum(Amount))
+fxndf = fxndf %>% group_by(CurrencyPair) %>% summarise(Amount = sum(Amount))
+fxswap = fxswap %>% group_by(CurrencyPair) %>% summarise(Amount = sum(Amount))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
